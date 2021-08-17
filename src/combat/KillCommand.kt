@@ -1,40 +1,37 @@
 package combat
 
-import KillState
 import com.epicbot.api.shared.APIContext
+import com.epicbot.api.shared.entity.GroundItem
 import com.epicbot.api.shared.entity.NPC
 import com.epicbot.api.shared.util.time.Time
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collect
 import utils.Consts
 import utils.printMsg
 
 class KillCommand {
 
-    private var killstate: MutableStateFlow<KillState> = MutableStateFlow(KillState.NO_TARGET)
-
     private var currentHealthPercentage: Int = 0
     private var currentTarget: NPC? = null
 
-    private var itemsToLoot: List<String> = listOf(Consts.ITEM_BONES)
+    private lateinit var apiContext: APIContext
 
     //region Init
 
     fun initKillCommand(apiContext: APIContext) {
-        currentHealthPercentage = apiContext.localPlayer().healthPercent
+        this.apiContext = apiContext
+        this.currentHealthPercentage = apiContext.localPlayer().healthPercent
         printMsg("initKillCommand")
-        acquireTarget(apiContext)
+        acquireTarget()
     }
 
-    suspend fun observeKillStateUpdates(apiContext: APIContext) {
-        killstate.collect {
-            when (it) {
-                KillState.NO_TARGET,
-                KillState.NPC_DEAD_LOOTED -> acquireTarget(apiContext)
-                KillState.PLAYER_FIGHTING_NPC -> finishKillingCurrentTarget(apiContext)
-                KillState.NPC_DEAD_UNLOOTED -> lootTarget(apiContext)
-                else -> {}
-            }
+    fun pollKillCommand() {
+        when {
+            isPlayerMoving() -> return
+            !doesPlayerHaveLiveTarget() -> acquireTarget()
+            doesPlayerHaveLiveTarget() && currentTarget.isFightingSomeoneElse() -> acquireTarget()
+            doesPlayerHaveLiveTarget() && !currentTarget.isInCombat() -> attackTarget()
+            doesPlayerHaveLowHealth() -> eatFood()
+            doesPlayerHaveLiveTarget() && currentTarget.isInCombat() -> return
+            !doesPlayerHaveLiveTarget() -> lootTarget()
         }
     }
 
@@ -42,47 +39,78 @@ class KillCommand {
 
     //region Kill State Actions
 
-    private fun acquireTarget(apiContext: APIContext) {
+    private fun acquireTarget() {
         printMsg("acquireTarget")
-        apiContext.npcs().getAll { it.name == Consts.NPC_COW && it.canReach(apiContext, targetDistance) }.find { !it.isInCombat }?.let {
+        apiContext.npcs().getAll { it.name == Consts.NPC_COW && it.canReachTarget() }?.find { !it.isInCombat }?.let {
             printMsg("$targetName found...\nAttacking $targetName")
-            killstate.value = KillState.NPC_TARGETED
-            currentTarget = it
+            this.currentTarget = it
             it.interact(Consts.INTERACTION_ATTACK)
-            Time.sleep(1000, 2000)
-            finishKillingCurrentTarget(apiContext)
         }
     }
 
-    private fun finishKillingCurrentTarget(apiContext: APIContext) {
-        if (currentTarget?.isInCombat == true) {
-            killstate.value = KillState.PLAYER_FIGHTING_NPC
-        }
-        if (currentTarget != null && currentTarget?.isDead == true) {
-            Time.sleep(300, 1200)
-            lootTarget(apiContext)
-            return
-        }
-        Time.sleep(500, 1000)
-        finishKillingCurrentTarget(apiContext)
+    private fun attackTarget() {
+        printMsg("attackTarget")
+        this.currentTarget?.interact(Consts.INTERACTION_ATTACK)
     }
 
-    private fun lootTarget(apiContext: APIContext) {
-        killstate.value = KillState.NPC_DEAD_UNLOOTED
-        apiContext.groundItems().query().asList().filter { itemsToLoot.contains(it.name) }.forEach {
-            Time.sleep(300, 600)
+    private fun eatFood() {
+        printMsg("eatFood")
+        apiContext.inventory().items.find { it.name == foodName }?.let {
+            printMsg("Eating ${it.name}...")
+            it.click()
+        }
+    }
+
+    private fun lootTarget() {
+        printMsg("lootTarget")
+        apiContext.groundItems().query().asList().filter { itemsToLoot.contains(it.name) && it.canReachTarget() }.forEach {
             printMsg("Picking up $it")
             it.interact(Consts.INTERACTION_TAKE)
         }
-        currentTarget = null
-        killstate.value = KillState.NPC_DEAD_LOOTED
+        this.currentTarget = null
     }
+
+    //endregion
+
+    //region Player
+
+    private fun isPlayerMoving(): Boolean = apiContext.localPlayer().isMoving
+
+    private fun isPlayerFighting(): Boolean = apiContext.localPlayer().isInCombat || apiContext.localPlayer().isAttacking
+
+    private fun doesPlayerHaveLiveTarget(): Boolean = currentTarget != null && !(currentTarget?.isDead ?: false)
+
+    private fun doesPlayerHaveLowHealth(): Boolean = currentHealthPercentage <= 20
+
+    //endregion
+
+    //region Target
+
+    private fun NPC.canReachTarget(): Boolean = this.canReach(apiContext, targetDistance)
+
+    private fun NPC?.isFightingSomeoneElse(): Boolean = (this?.isInCombat ?: false) && !isPlayerFighting()
+
+    private fun NPC?.isInCombat(): Boolean = this?.isInCombat ?: false
+
+    //endregion
+
+    //region Item
+
+    private fun GroundItem.canReachTarget(): Boolean = this.canReach(apiContext, targetDistance)
 
     //endregion
 
     companion object {
 
-        const val targetName: String = "Cow" //Change me to your target npc
+        const val targetName: String = Consts.NPC_HILL_GIANTS //Change me to your target npc
         const val targetDistance: Int = 9 //Change me to your target distance
+
+        const val foodName: String = Consts.ITEM_SALMON //Change me to your food
+
+        private var itemsToLoot: List<String> = listOf(
+            Consts.ITEM_COINS, Consts.ITEM_BIG_BONES,
+            Consts.ITEM_DEATH_RUNE, Consts.ITEM_COSMIC_RUNE, Consts.ITEM_DEATH_RUNE, Consts.ITEM_LAW_RUNE,
+            Consts.ITEM_UNCUT_SAPPHIRE, Consts.ITEM_UNCUT_EMERALD, Consts.ITEM_UNCUT_RUBY, Consts.ITEM_UNCUT_DIAMOND
+        )
     }
 }
