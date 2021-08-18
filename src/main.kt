@@ -17,11 +17,10 @@ class main : LoopScript() {
         killCommand.apply {
             initKillCommand(apiContext)
         }
-        return false
+        return true
     }
 
     override fun loop(): Int {
-        printMsg("loop")
         killCommand.pollKillCommand()
         return LOOP_TIMER
     }
@@ -29,7 +28,6 @@ class main : LoopScript() {
     //endregion
 
     companion object {
-        private val LOOP_TIMER by lazy { Random.nextInt(328, 636) }
-        private const val AREA_DIMENSIONS = 9 //squared
+        private val LOOP_TIMER by lazy { Random.nextInt(636, 1048) }
     }
 }
