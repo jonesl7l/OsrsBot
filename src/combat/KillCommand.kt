@@ -85,20 +85,11 @@ class KillCommand {
         this.currentTarget = null
     }
 
-    private fun buryBones(item: GroundItem) {
-        printMsg("buryBones")
-        if (item.name == targetBones) {
-            printMsg("Burying ${item.name}")
-            apiContext.inventory().getItem(item.name).click()
-            Time.sleep(Random.nextInt(2434, 3594))
-        }
-    }
-
     private fun buryBones() {
         printMsg("buryBones")
             printMsg("Burying $targetBones")
             apiContext.inventory().getItem(targetBones).click()
-            Time.sleep(Random.nextInt(2434, 3594))
+            Time.sleep(Random.nextInt(1231, 2352))
     }
 
     //endregion
@@ -107,7 +98,6 @@ class KillCommand {
 
     private fun isPlayerMoving(): Boolean = apiContext.localPlayer().isMoving
 
-    private fun isPlayerInteracting(): Boolean = apiContext.localPlayer().interacting != null
 
     private fun isPlayerFighting(): Boolean = apiContext.localPlayer().isInCombat || apiContext.localPlayer().isAttacking
 
@@ -132,8 +122,6 @@ class KillCommand {
     //region Item
 
     private fun isLootNearby(): Boolean = apiContext.groundItems().query().named(*itemsToLoot.toTypedArray()).reachable().results().isNotEmpty()
-
-    private fun GroundItem.canReachTarget(): Boolean = this.canReach(apiContext, targetDistance)
 
     //endregion
 
